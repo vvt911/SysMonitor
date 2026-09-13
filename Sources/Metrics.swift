@@ -1,7 +1,7 @@
 import Foundation
 import IOKit
 
-// MARK: - sysctl helpers
+// MARK: - Đọc sysctl
 
 func sysctlString(_ name: String) -> String? {
     var size = 0
@@ -27,7 +27,7 @@ func sysctlInt(_ name: String) -> Int64? {
     return nil
 }
 
-// MARK: - Static machine info
+// MARK: - Thông tin máy, đọc một lần
 
 struct MachineInfo {
     let cpuBrand: String
@@ -66,12 +66,12 @@ struct MachineInfo {
 // MARK: - CPU
 
 struct CPUSample {
-    var usage: Double = 0          // 0...1, toan bo may
+    var usage: Double = 0          // 0...1, toàn máy
     var user: Double = 0
     var system: Double = 0
     var nice: Double = 0
     var idle: Double = 1
-    var cores: [Double] = []       // 0...1 cho tung nhan logic
+    var cores: [Double] = []       // 0...1 cho từng nhân logic
     var loadAverage: (Double, Double, Double) = (0, 0, 0)
     var processCount: Int = 0
     var threadCount: Int = 0
@@ -178,11 +178,11 @@ final class CPUSampler {
     }
 }
 
-// MARK: - Memory
+// MARK: - Bộ nhớ
 
 struct MemorySample {
     var total: UInt64 = 0
-    var used: UInt64 = 0            // App + Wired + Compressed (giong Activity Monitor)
+    var used: UInt64 = 0            // ứng dụng + hệ thống giữ + đã nén, như Activity Monitor
     var app: UInt64 = 0
     var wired: UInt64 = 0
     var compressed: UInt64 = 0
@@ -190,7 +190,7 @@ struct MemorySample {
     var free: UInt64 = 0
     var swapUsed: UInt64 = 0
     var swapTotal: UInt64 = 0
-    var pressureLevel: Int = 1      // 1 = binh thuong, 2 = canh bao, 4 = nguy hiem
+    var pressureLevel: Int = 1      // 1 bình thường, 2 cảnh báo, 4 nguy hiểm
     var pageIns: UInt64 = 0
     var pageOuts: UInt64 = 0
 
@@ -248,14 +248,14 @@ final class MemorySampler {
     }
 }
 
-// MARK: - Disk
+// MARK: - Ổ đĩa
 
 struct VolumeInfo {
     var name: String
     var path: String
     var total: UInt64
-    var available: UInt64       // cho muc dich quan trong, giong Finder
-    var rawFree: UInt64         // tro trong tho tu he thong tap tin
+    var available: UInt64       // phần dùng được cho việc quan trọng, như Finder
+    var rawFree: UInt64         // trống thô theo hệ thống tập tin
     var isRoot: Bool
     var isInternal: Bool
     var fsType: String
@@ -268,7 +268,7 @@ struct DiskSample {
     var volumes: [VolumeInfo] = []
     var readBytes: UInt64 = 0
     var writeBytes: UInt64 = 0
-    var readRate: Double = 0     // byte/giay
+    var readRate: Double = 0     // byte mỗi giây
     var writeRate: Double = 0
 
     var root: VolumeInfo? { volumes.first(where: { $0.isRoot }) ?? volumes.first }
@@ -372,11 +372,11 @@ final class DiskSampler {
     }
 }
 
-// MARK: - Tien trinh dang chiem tai nguyen
+// MARK: - Tiến trình
 
 struct ProcInfo {
     var pid: Int
-    var cpu: Double      // phan tram tren mot nhan
+    var cpu: Double      // phần trăm trên một nhân
     var rss: UInt64      // byte
     var name: String
 }
@@ -384,7 +384,7 @@ struct ProcInfo {
 enum ProcSort { case cpu, memory }
 
 enum ProcessLister {
-    /// Mot lan goi ps duy nhat, tra ve toan bo tien trinh (~20 ms).
+    /// Một lần gọi ps duy nhất, trả về toàn bộ tiến trình, mất khoảng 20 ms.
     static func snapshot() -> [ProcInfo] {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/ps")
@@ -414,12 +414,11 @@ enum ProcessLister {
     }
 }
 
-/// Giu ket qua ps gan nhat de menu mo ra co so lieu ngay.
+/// Giữ kết quả ps gần nhất để menu mở ra là có số liệu ngay.
 ///
-/// Luu y: khi menu dang mo, macOS khong chay cac khoi
-/// DispatchQueue.main.async, nhung Timer o che do .common thi van chay.
-/// Vi vay luong nen chi ghi ket qua vao day (co khoa), con giao dien doc lai
-/// o moi nhip Timer thay vi cho callback.
+/// Khi menu đang mở, macOS không chạy các khối DispatchQueue.main.async nhưng
+/// Timer ở chế độ .common thì vẫn chạy. Nên luồng nền chỉ ghi kết quả vào đây
+/// qua khoá, còn giao diện đọc lại theo nhịp Timer thay vì chờ callback.
 final class ProcessCache {
     static let shared = ProcessCache()
     private init() {}
@@ -446,10 +445,9 @@ final class ProcessCache {
         lock.unlock()
     }
 
-    /// Lay ngay tren luong hien tai, chi dung cho lan mo menu dau tien.
+    /// Lấy ngay trên luồng hiện tại, chỉ dùng cho lần mở menu đầu tiên.
     func refreshNow() { store(ProcessLister.snapshot()) }
 
-    /// Bat dau lay o luong nen neu so lieu da cu.
     func refresh(minimumInterval: Double = 1.5) {
         lock.lock()
         let stale = !fetching && CFAbsoluteTimeGetCurrent() - lastFetch > minimumInterval

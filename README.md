@@ -39,6 +39,10 @@ danh sách các ổ đĩa khác đang gắn.
 Mỗi menu còn có mục mở Activity Monitor, chọn tốc độ cập nhật (1, 2, 3 hoặc 5
 giây) và bật tắt khởi động cùng máy.
 
+Đang mở một bảng mà rê chuột sang mục khác thì bảng tự nhảy theo con trỏ, giống
+cách các menu Apple, File, Edit trên thanh menu hoạt động, không cần bấm. Bấm
+thì vẫn được nhưng chậm hơn, lý do ở phần ghi chú bên dưới.
+
 ## Cấu trúc source
 
 | Tệp | Nội dung |
@@ -58,6 +62,19 @@ Khi một menu đang mở, macOS không chạy các khối `DispatchQueue.main.a
 nhưng `Timer` đăng ký ở chế độ `.common` thì vẫn chạy. Vì vậy luồng nền chỉ ghi
 kết quả `ps` vào một vùng nhớ có khoá, còn giao diện đọc lại theo nhịp Timer.
 Đổi chỗ này sang callback sẽ làm danh sách tiến trình đứng yên khi menu mở.
+
+Khi một menu đang mở, cú bấm sang mục khác bị vòng theo dõi của menu nuốt mất
+nên mục kia không nhận được, phải bấm hai lần. Tệ hơn là macOS mất khoảng 270 ms
+mới đóng xong menu cũ, đo bằng cách nào cũng không rút ngắn được, kể cả tự gọi
+`cancelTrackingWithoutAnimation`. Ngược lại khi không có cú bấm nào thì lệnh huỷ
+đó chỉ tốn 5 ms. Vì vậy app theo dõi vị trí con trỏ mỗi 20 ms, con trỏ dừng trên
+mục khác quá 120 ms là đóng menu cũ rồi mở menu mới ngay. Cú bấm vẫn được xử lý
+như đường dự phòng. Vị trí các mục đọc từ khung cửa sổ thật lúc đó chứ không phải
+toạ độ cố định, nên kéo đổi chỗ tuỳ ý vẫn đúng.
+
+Đóng menu bằng `cancelTrackingWithoutAnimation` thì macOS không tự tắt phần tô
+đậm của nút, phải gọi `highlight(false)`, nếu không mục cũ sẽ sáng mãi trong khi
+menu đã chuyển đi chỗ khác.
 
 Thứ tự ba mục trên thanh menu là CPU, bộ nhớ, ổ đĩa. Do `NSStatusBar` chèn mục
 mới vào bên trái nên trong `AppDelegate` chúng được tạo theo thứ tự ngược lại.

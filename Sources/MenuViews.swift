@@ -1,6 +1,6 @@
 import AppKit
 
-// MARK: - Kieu dang chung
+// MARK: - Kiểu dáng chung
 
 enum Theme {
     static let width: CGFloat = 300
@@ -28,12 +28,12 @@ enum Theme {
     }
 }
 
-/// Goc toa do o tren cung cho de tinh layout.
+/// Gốc toạ độ ở trên cùng cho dễ tính layout.
 class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
-// MARK: - Thanh tien do
+// MARK: - Thanh tiến độ
 
 final class BarView: NSView {
     var value: Double = 0 { didSet { needsDisplay = true } }
@@ -55,7 +55,7 @@ final class BarView: NSView {
     }
 }
 
-// MARK: - Dau muc: bieu tuong, ten, phan tram lon, thanh tien do
+// MARK: - Đầu mục
 
 final class HeaderView: FlippedView {
     private let icon = NSImageView()
@@ -89,7 +89,7 @@ final class HeaderView: FlippedView {
     }
 }
 
-// MARK: - Dong "nhan : gia tri"
+// MARK: - Dòng nhãn và giá trị
 
 final class KeyValueRow: FlippedView {
     private let key = Theme.label(size: 12, color: .secondaryLabelColor)
@@ -122,7 +122,7 @@ final class KeyValueRow: FlippedView {
     }
 }
 
-// MARK: - Tieu de nhom
+// MARK: - Tiêu đề nhóm
 
 final class SectionView: FlippedView {
     init(_ text: String) {
@@ -135,7 +135,7 @@ final class SectionView: FlippedView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-// MARK: - Luoi tung nhan CPU
+// MARK: - Lưới từng nhân CPU
 
 final class CoreGridView: FlippedView {
     private var values: [Double] = []
@@ -148,7 +148,7 @@ final class CoreGridView: FlippedView {
         let p = MachineInfo.shared.performanceCores
         var labels: [String] = []
         if e + p == coreCount, e > 0, p > 0 {
-            // Apple silicon: cac nhan tiet kiem dien duoc liet ke truoc
+            // Apple silicon liệt kê nhân tiết kiệm điện trước
             for i in 1...e { labels.append("E\(i)") }
             for i in 1...p { labels.append("P\(i)") }
         } else {
@@ -205,7 +205,7 @@ final class CoreGridView: FlippedView {
     }
 }
 
-// MARK: - Danh sach tien trinh
+// MARK: - Danh sách tiến trình
 
 final class ProcessListView: FlippedView {
     private var items: [(name: String, value: String, fraction: Double)] = []
@@ -259,7 +259,7 @@ final class ProcessListView: FlippedView {
     }
 }
 
-// MARK: - Dong cho tung o dia
+// MARK: - Dòng cho từng ổ đĩa
 
 final class VolumeRowView: FlippedView {
     private let name = Theme.label(size: 11.5)

@@ -1,6 +1,6 @@
 import AppKit
 
-// MARK: - Loai so lieu
+// MARK: - Loại số liệu
 
 enum MetricKind: String {
     case cpu, memory, disk
@@ -27,7 +27,7 @@ struct Stats {
     var disk = DiskSample()
 }
 
-// MARK: - Cai dat luu lai
+// MARK: - Cài đặt lưu lại
 
 enum Settings {
     private static let key = "refreshInterval"
@@ -40,7 +40,7 @@ enum Settings {
     }
 }
 
-// MARK: - Khoi dong cung may (LaunchAgent)
+// MARK: - Khởi động cùng máy
 
 enum LaunchAtLogin {
     static let label = "local.thuyvv.sysmonitor"
@@ -92,7 +92,7 @@ enum LaunchAtLogin {
     }
 }
 
-// MARK: - Lop nen cho tung muc tren thanh menu
+// MARK: - Lớp nền cho từng mục trên thanh menu
 
 class MetricController: NSObject, NSMenuDelegate {
     let kind: MetricKind
@@ -128,16 +128,16 @@ class MetricController: NSObject, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    // MARK: dung menu
+    // MARK: Dựng menu
 
     func build() {
         buildBody()
         buildFooter()
     }
 
-    func buildBody() {}                       // lop con cai dat
-    func refresh(_ s: Stats) {}               // lop con cai dat
-    func percent(_ s: Stats) -> Double { 0 }  // lop con cai dat
+    func buildBody() {}
+    func refresh(_ s: Stats) {}
+    func percent(_ s: Stats) -> Double { 0 }
     var procSort: ProcSort? { nil }
     func applyProcesses(_ list: [ProcInfo]) {}
 
@@ -190,7 +190,7 @@ class MetricController: NSObject, NSMenuDelegate {
         loginItem?.state = LaunchAtLogin.isEnabled ? .on : .off
     }
 
-    // MARK: hanh dong
+    // MARK: Hành động
 
     @objc private func openActivityMonitor() {
         let url = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
@@ -209,13 +209,12 @@ class MetricController: NSObject, NSMenuDelegate {
         syncFooter()
     }
 
-    // MARK: cap nhat
+    // MARK: Cập nhật
 
     final func updateStatusItem(_ s: Stats) {
         statusItem.button?.title = " " + Fmt.pct(percent(s))
     }
 
-    /// Do lai danh sach tien trinh tu cache dung chung.
     final func refreshProcesses() {
         guard let sort = procSort else { return }
         let cache = ProcessCache.shared
@@ -228,17 +227,22 @@ class MetricController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         isOpen = true
+        AppDelegate.shared?.menuOpened()
         syncFooter()
         if let s = AppDelegate.shared?.lastStats { refresh(s) }
         if procSort != nil {
-            // Lan mo dau tien chua co gi trong cache thi lay ngay (~20 ms)
             if ProcessCache.shared.isEmpty { ProcessCache.shared.refreshNow() }
             refreshProcesses()
             ProcessCache.shared.refresh(minimumInterval: 0.5)
         }
     }
 
-    func menuDidClose(_ menu: NSMenu) { isOpen = false }
+    func menuDidClose(_ menu: NSMenu) {
+        isOpen = false
+        // Đóng bằng cancelTracking thì macOS không tự tắt phần tô đậm của nút.
+        statusItem.button?.highlight(false)
+        AppDelegate.shared?.menuClosed(self)
+    }
 }
 
 // MARK: - CPU
@@ -303,7 +307,7 @@ final class CPUController: MetricController {
     }
 }
 
-// MARK: - Bo nho
+// MARK: - Bộ nhớ
 
 final class MemoryController: MetricController {
     private var rowUsed, rowApp, rowWired, rowCompressed, rowCached, rowFree: KeyValueRow!
@@ -362,7 +366,7 @@ final class MemoryController: MetricController {
     }
 }
 
-// MARK: - O dia
+// MARK: - Ổ đĩa
 
 final class DiskController: MetricController {
     private var rowUsed, rowFree, rowTotal: KeyValueRow!

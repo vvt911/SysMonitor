@@ -3,14 +3,14 @@ import Foundation
 enum Fmt {
     private static let memFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
-        f.countStyle = .memory          // co so 1024, giong Activity Monitor
+        f.countStyle = .memory          // cơ số 1024, như Activity Monitor
         f.allowedUnits = [.useGB, .useMB]
         return f
     }()
 
     private static let diskFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
-        f.countStyle = .file            // co so 1000, giong Finder
+        f.countStyle = .file            // cơ số 1000, như Finder
         f.allowedUnits = [.useGB, .useTB, .useMB]
         return f
     }()
