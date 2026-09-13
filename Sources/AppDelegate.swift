@@ -11,12 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private(set) var lastStats = Stats()
 
-    private var hoverPoller: Timer?
-    private var hoverTarget: MetricController?
-    private var hoverSince: CFAbsoluteTime = 0
-    private var pendingSwitch: MetricController?
-    private let hoverDelay: CFTimeInterval = 0.12
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
 
@@ -46,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Chuyển giữa ba menu
 
+    /// Khi một menu đang mở, cú bấm sang mục khác bị vòng theo dõi của menu nuốt
+    /// mất nên mục kia không hề nhận được, phải bấm hai lần. Ở đây bắt lúc menu
+    /// vừa đóng, thấy con trỏ đang nằm trên mục nào thì mở menu của mục đó.
+    ///
+    /// Vị trí đọc từ khung cửa sổ thật của từng mục tại thời điểm đó, không phải
+    /// toạ độ cố định, nên kéo đổi chỗ trên thanh menu vẫn đúng.
     private func itemUnderCursor(excluding skip: MetricController) -> MetricController? {
         guard !NSEvent.modifierFlags.contains(.command) else { return nil }
         let cursor = NSEvent.mouseLocation
@@ -54,50 +54,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Khi một menu đang mở, cú bấm sang mục khác bị vòng theo dõi của menu nuốt
-    /// mất, và macOS mất khoảng 270 ms mới đóng menu cũ, không rút ngắn được.
-    /// Ngược lại tự gọi huỷ chỉ tốn 5 ms, nên menu chuyển theo con trỏ giống hệt
-    /// cách các menu Apple, File, Edit hoạt động, khỏi phải bấm.
-    private func pollHover() {
-        guard pendingSwitch == nil,
-              let open = controllers.first(where: { $0.isOpen }),
-              let target = itemUnderCursor(excluding: open)
-        else {
-            hoverTarget = nil
-            return
-        }
-        guard target === hoverTarget else {
-            hoverTarget = target
-            hoverSince = CFAbsoluteTimeGetCurrent()
-            return
-        }
-        guard CFAbsoluteTimeGetCurrent() - hoverSince >= hoverDelay else { return }
-
-        hoverTarget = nil
-        pendingSwitch = target
-        open.menu.cancelTrackingWithoutAnimation()
-    }
-
     func menuOpened() {
         for c in controllers where !c.isOpen { c.statusItem.button?.highlight(false) }
-        guard hoverPoller == nil else { return }
-        let t = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in self?.pollHover() }
-        RunLoop.main.add(t, forMode: .common)
-        hoverPoller = t
     }
 
     func menuClosed(_ closed: MetricController) {
-        if let target = pendingSwitch {
-            pendingSwitch = nil
-            // Gọi thẳng tại đây sẽ lồng menu mới vào trong callback của Timer,
-            // phải đợi vòng theo dõi của menu cũ thoát hẳn.
-            DispatchQueue.main.async { target.statusItem.button?.performClick(nil) }
-            return
-        }
-        hoverPoller?.invalidate()
-        hoverPoller = nil
-        hoverTarget = nil
-
         itemUnderCursor(excluding: closed)?.statusItem.button?.performClick(nil)
     }
 
