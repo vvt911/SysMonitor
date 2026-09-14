@@ -198,9 +198,9 @@ struct MemorySample {
 
     var pressureText: String {
         switch pressureLevel {
-        case 4: return "Nguy hiểm"
-        case 2: return "Cảnh báo"
-        default: return "Bình thường"
+        case 4: return tr("Nguy hiểm", "Critical")
+        case 2: return tr("Cảnh báo", "Warning")
+        default: return tr("Bình thường", "Normal")
         }
     }
 }
@@ -272,7 +272,11 @@ struct DiskSample {
     var writeRate: Double = 0
 
     var root: VolumeInfo? { volumes.first(where: { $0.isRoot }) ?? volumes.first }
-    var percent: Double { root?.percent ?? 0 }
+
+    /// Ổ có đường dẫn đã chọn, không thấy thì trả về ổ khởi động.
+    func volume(at path: String) -> VolumeInfo? {
+        volumes.first(where: { !path.isEmpty && $0.path == path }) ?? root
+    }
 }
 
 final class DiskSampler {
@@ -428,7 +432,7 @@ final class ProcessCache {
     private var _byMemory: [ProcInfo] = []
     private var fetching = false
     private var lastFetch: CFAbsoluteTime = 0
-    private let keep = 5
+    private let keep = 8
 
     var byCPU: [ProcInfo] { lock.lock(); defer { lock.unlock() }; return _byCPU }
     var byMemory: [ProcInfo] { lock.lock(); defer { lock.unlock() }; return _byMemory }

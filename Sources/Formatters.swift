@@ -16,7 +16,10 @@ enum Fmt {
     }()
 
     static func pct(_ v: Double) -> String { String(format: "%.1f%%", v * 100) }
-    static func pct0(_ v: Double) -> String { String(format: "%.0f%%", v * 100) }
+    /// Con số trên thanh menu, số chữ số thập phân theo Cài đặt.
+    static func menuBarPercent(_ v: Double) -> String {
+        String(format: AppSettings.shared.decimals == 0 ? "%.0f%%" : "%.1f%%", v * 100)
+    }
     static func mem(_ bytes: UInt64) -> String { memFormatter.string(fromByteCount: Int64(bytes)) }
     static func disk(_ bytes: UInt64) -> String { diskFormatter.string(fromByteCount: Int64(bytes)) }
 
@@ -28,15 +31,15 @@ enum Fmt {
         return String(format: "%.2f GB/s", v / 1_000_000_000)
     }
 
-    /// "12 ngày 4 giờ" / "4 giờ 21 phút"
+    /// "12 ngày 4 giờ", "4 giờ 21 phút" hoặc bản tiếng Anh ngắn gọn.
     static func uptime(since date: Date) -> String {
         let s = Int(Date().timeIntervalSince(date))
         let days = s / 86_400
         let hours = (s % 86_400) / 3_600
         let minutes = (s % 3_600) / 60
-        if days > 0 { return "\(days) ngày \(hours) giờ" }
-        if hours > 0 { return "\(hours) giờ \(minutes) phút" }
-        return "\(minutes) phút"
+        if days > 0 { return tr("\(days) ngày \(hours) giờ", "\(days)d \(hours)h") }
+        if hours > 0 { return tr("\(hours) giờ \(minutes) phút", "\(hours)h \(minutes)m") }
+        return tr("\(minutes) phút", "\(minutes) min")
     }
 
     static func load(_ l: (Double, Double, Double)) -> String {

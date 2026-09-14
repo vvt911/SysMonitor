@@ -6,12 +6,12 @@ enum Theme {
     static let width: CGFloat = 300
     static let pad: CGFloat = 14
 
+    /// Màu theo ngưỡng cảnh báo và ngưỡng nguy hiểm trong Cài đặt.
     static func tint(_ percent: Double) -> NSColor {
-        switch percent {
-        case ..<0.60: return .systemGreen
-        case ..<0.85: return .systemOrange
-        default:      return .systemRed
-        }
+        let settings = AppSettings.shared
+        if percent < settings.warningLevel { return .systemGreen }
+        if percent < settings.criticalLevel { return .systemOrange }
+        return .systemRed
     }
 
     static func label(_ text: String = "", size: CGFloat = 12,

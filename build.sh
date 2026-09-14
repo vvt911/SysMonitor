@@ -3,7 +3,8 @@
 #
 #   ./build.sh            build lai + khoi dong lai app
 #
-# Bat khoi dong cung may: mo menu bat ky tren thanh menu -> "Khoi dong cung may".
+# Cai dat (ngon ngu, khoi dong cung may, chi so hien thi...): mo menu bat ky tren
+# thanh menu -> "Cai dat..." (Cmd+,), hoac mo lai SysMonitor.app khi app dang chay.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"

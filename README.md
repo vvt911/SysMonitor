@@ -13,11 +13,10 @@ Bấm vào từng chỉ số để xem bảng chi tiết.
 ./build.sh
 ```
 
-Script dựng `~/Applications/SysMonitor.app` rồi mở luôn. Cần Xcode Command Line
-Tools (`xcode-select --install`), không cần thư viện ngoài.
+Script dựng `~/Applications/SysMonitor.app` rồi mở luôn. Cần macOS 14 trở lên và Xcode
+Command Line Tools (`xcode-select --install`), không cần thư viện ngoài.
 
-Muốn app tự chạy khi bật máy: mở menu bất kỳ trên thanh menu rồi bật
-**Khởi động cùng máy**. Tuỳ chọn này ghi một LaunchAgent vào
+Muốn app tự chạy khi bật máy: mở Cài đặt rồi bật **Khởi động cùng máy**. Tuỳ chọn này ghi một LaunchAgent vào
 `~/Library/LaunchAgents/local.thuyvv.sysmonitor.plist`.
 
 ## Xem được những gì
@@ -36,8 +35,8 @@ nhiều nhất. Cách tính giống cột "Memory Used" của Activity Monitor, 
 tổng, tốc độ đọc ghi hiện thời, tổng số byte đọc ghi từ lúc khởi động, và
 danh sách các ổ đĩa khác đang gắn.
 
-Mỗi menu còn có mục mở Activity Monitor, chọn tốc độ cập nhật (1, 2, 3 hoặc 5
-giây) và bật tắt khởi động cùng máy.
+Mỗi menu còn có mục mở Activity Monitor và mục **Cài đặt…** với phím tắt ⌘,. Mở lại
+SysMonitor.app khi app đang chạy cũng hiện cửa sổ Cài đặt.
 
 Đang mở một bảng mà bấm sang mục khác thì chuyển thẳng sang bảng đó, không phải
 bấm hai lần.
@@ -47,13 +46,32 @@ RAM giữ tới cùng. Các chỉ số còn lại dồn sang phải, vẫn theo 
 nằm sát biểu tượng bên cạnh. Việc tự nhường chỗ chỉ tính theo màn hình có tai thỏ, và
 áp dụng cho mọi màn hình vì macOS không cho một mục thanh menu hiện riêng từng màn hình.
 
+## Cài đặt
+
+| Nhóm | Tuỳ chọn |
+| --- | --- |
+| Chung | Ngôn ngữ theo hệ thống, tiếng Việt hoặc tiếng Anh. Khởi động cùng máy. Tốc độ cập nhật. |
+| Chỉ số trên thanh menu | Bật tắt từng chỉ số, luôn giữ ít nhất một. Đổi thứ tự từ trái sang phải. |
+| Cách hiển thị | Hiện biểu tượng. Số chữ số thập phân. Tô màu con số khi vượt ngưỡng cảnh báo. Chọn ổ đĩa hiện trên thanh menu. |
+| Khi thanh menu đầy | Bật tắt việc tự bớt chỉ số. Thứ tự ưu tiên giữ lại. |
+| Bảng chi tiết | Số tiến trình liệt kê. Ngưỡng cảnh báo và ngưỡng nguy hiểm dùng để tô màu. |
+
+Mọi thay đổi áp dụng ngay, kể cả ngôn ngữ. Ngôn ngữ mặc định là tiếng Việt. Cài đặt lưu trong
+`defaults read local.thuyvv.sysmonitor`.
+
+Chỉ số tắt trong Cài đặt thì ô của nó bị ẩn hẳn bằng `isVisible` nên không để lại khe
+trống. Các ô bị ẩn luôn là ô bên trái vì chỉ số dồn sang phải, nên bật lại thì ô xuất
+hiện ở mép trái vẫn đúng chỗ.
+
 ## Cấu trúc source
 
 | Tệp | Nội dung |
 | --- | --- |
 | `Sources/Metrics.swift` | Đọc số liệu hệ thống qua Mach, sysctl, IOKit và `ps` |
 | `Sources/MenuViews.swift` | Các thành phần giao diện tự vẽ trong menu |
-| `Sources/StatusItems.swift` | Ba mục trên thanh menu và nội dung từng bảng |
+| `Sources/StatusItems.swift` | Ba ô trên thanh menu và nội dung từng bảng |
+| `Sources/AppSettings.swift` | Cài đặt lưu lại, ngôn ngữ, khởi động cùng máy |
+| `Sources/SettingsWindow.swift` | Cửa sổ Cài đặt viết bằng SwiftUI |
 | `Sources/AppDelegate.swift` | Vòng lấy mẫu, chuyển menu và nhường chỗ khi thanh menu đầy |
 | `Sources/MenuBarSpace.swift` | Đọc chỗ trống thanh menu của từng màn hình |
 | `Sources/Formatters.swift` | Định dạng số liệu hiển thị |
@@ -109,6 +127,7 @@ Kiểm tra giao diện nhanh mà không cần bấm chuột:
 ~/Applications/SysMonitor.app/Contents/MacOS/SysMonitor --open cpu
 ```
 
-Thay `cpu` bằng `memory` hoặc `disk` để mở bảng tương ứng. Thêm
+Thay `cpu` bằng `memory` hoặc `disk` để mở bảng tương ứng, hoặc dùng `--settings` để
+mở thẳng cửa sổ Cài đặt. Thêm
 `--appearance light` hoặc `--appearance dark` để xem app ở chế độ sáng tối mà
 không phải đổi cài đặt của máy.
