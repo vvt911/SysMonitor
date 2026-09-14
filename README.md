@@ -42,10 +42,10 @@ giây) và bật tắt khởi động cùng máy.
 Đang mở một bảng mà bấm sang mục khác thì chuyển thẳng sang bảng đó, không phải
 bấm hai lần.
 
-Thanh menu thiếu chỗ thì app tự bỏ bớt mục theo thứ tự ưu tiên: bỏ ổ đĩa trước,
-rồi đến CPU, RAM giữ tới cùng. Có chỗ trở lại thì các mục hiện lại, vẫn theo thứ
-tự CPU, RAM, ổ đĩa. Mục bị bỏ sẽ mất trên mọi màn hình, kể cả màn còn dư chỗ, vì
-macOS không cho một mục thanh menu hiện riêng từng màn hình.
+Thanh menu thiếu chỗ thì app bớt chỉ số theo thứ tự ưu tiên: ổ đĩa trước, rồi đến CPU,
+RAM giữ tới cùng. Các chỉ số còn lại dồn sang phải, vẫn theo thứ tự CPU, RAM, ổ đĩa,
+nằm sát biểu tượng bên cạnh. Việc tự nhường chỗ chỉ tính theo màn hình có tai thỏ, và
+áp dụng cho mọi màn hình vì macOS không cho một mục thanh menu hiện riêng từng màn hình.
 
 ## Cấu trúc source
 
@@ -78,22 +78,30 @@ ngay đều vậy, và tự gọi `cancelTrackingWithoutAnimation` cũng không 
 Đó là trần của cách làm bằng NSMenu, muốn nhanh hơn thì phải thay menu bằng cửa
 sổ tự vẽ.
 
-Thứ tự ba mục cố định là CPU, bộ nhớ, ổ đĩa. `NSStatusBar` chèn mục mới vào bên
-trái nên các mục được tạo từ phải sang trái. Giữ Command rồi kéo vẫn đổi chỗ được
-nhưng không được nhớ, vì mỗi lần thêm lại mục app tạo lại cả ba theo thứ tự này.
+Thanh menu có ba ô cố định, tạo một lần lúc mở app theo thứ tự từ phải sang trái vì
+`NSStatusBar` chèn mục mới vào bên trái. Các ô không bao giờ bị gỡ, chỉ đổi nội dung.
 
-Khi thanh menu thiếu chỗ, Control Center tự chọn mục phải ẩn và chọn không nhất
-quán. Thử nghiệm cho thấy thiếu chỗ cho một mục thì nó ẩn RAM, thiếu chỗ cho hai
-mục thì nó lại giữ RAM mà ẩn hai mục kia, và đổi tên lưu vị trí không ảnh hưởng gì.
-Vì vậy app tự nhường chỗ. Cứ 2 giây app đọc danh sách cửa sổ thanh menu, thấy có
-mục bị ẩn thì gỡ mục ưu tiên thấp nhất đang hiện. Trên màn có tai thỏ app tính được
-phần trống bên phải tai thỏ nên chỉ hiện lại mục khi đủ chỗ. Trên màn không có tai
-thỏ thì thử hiện lại, tràn ngay thì lần sau đợi lâu gấp đôi. Đọc danh sách cửa sổ
-tốn khoảng 6 ms và không cần quyền ghi màn hình, vì mục bị ẩn vẫn nằm trong danh
-sách, chỉ bị đánh dấu không hiện.
+Khi thanh menu thiếu chỗ, Control Center tự chọn mục phải ẩn và chọn không nhất quán:
+thiếu chỗ cho một mục thì nó ẩn RAM, thiếu chỗ cho hai mục thì nó lại giữ RAM mà ẩn
+hai mục kia. Vì vậy app tự nhường chỗ. App đọc danh sách cửa sổ thanh menu của Control
+Center, trong đó mục bị ẩn vẫn có mặt nhưng bị đánh dấu không hiện, nên không cần quyền
+ghi màn hình. Phần bên phải tai thỏ có bề rộng cố định, nên app tính thẳng ra hiện được
+bao nhiêu chỉ số rồi đổi một lần.
 
-Không bật tắt mục bằng `isVisible`. Bật lại theo cách đó thì Control Center chèn
-mục vào chỗ khác và thứ tự bị lệch, nên muốn thêm mục là gỡ hết rồi tạo lại.
+Bớt chỉ số thì ô bên trái nhất bị thu độ rộng về 0 và các chỉ số dồn sang phải. Các
+cách khác đều đã thử và hỏng. Gỡ rồi tạo lại mục thì Control Center giữ mục mới ẩn gần
+nửa giây nên thanh menu nháy. Bật lại bằng `isVisible` thì mục bị chèn sang mép trái
+làm lệch thứ tự. Gỡ hoặc ẩn một mục đang bị Control Center ẩn thì để lại cửa sổ ma hàng
+chục giây. Ô thu gọn vẫn chiếm lề 16 pt của Control Center, thử bốn cách đều không bỏ
+được, nên nó được đặt ở mép trái để khe trống lẫn vào khoảng trống sẵn có thay vì chen
+giữa các biểu tượng.
+
+App đọc dày khi có dấu hiệu thanh menu vừa đổi: ô của app bị dời, đổi cỡ hoặc bị ẩn,
+một app mở hoặc thoát, màn hình thay đổi. Bình thường mỗi giây đọc một lần. Thiếu chỗ
+thì bớt ngay. Có chỗ thì đợi hai lần đọc liền nhau cùng kết quả mới thêm, và chừa thêm
+10 pt để con số đổi độ dài không làm chỉ số nhảy qua lại. Mục của app khác bị ẩn dù thừa
+chỗ quá 1 giây là cửa sổ ma sót lại khi app đó thoát, và bị bỏ qua. Ô của chính app thì
+luôn được tính, vì Control Center có lúc giữ ẩn một mục dù về số học là vừa chỗ.
 
 Kiểm tra giao diện nhanh mà không cần bấm chuột:
 

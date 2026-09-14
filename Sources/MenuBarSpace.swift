@@ -1,45 +1,45 @@
 import AppKit
 
-/// Chỗ trên thanh menu của từng màn hình, đọc từ danh sách cửa sổ hệ thống.
+/// Chỗ trên thanh menu của các màn hình có tai thỏ, đọc từ danh sách cửa sổ hệ thống.
 ///
-/// Trên macOS 26 mọi mục thanh menu do Control Center vẽ, mỗi màn hình một cửa sổ.
-/// Cửa sổ phía app chỉ nằm trên một màn hình và luôn báo đang hiện nên không dùng được.
-/// Mục bị ẩn vì thiếu chỗ vẫn có trong danh sách nhưng bị đánh dấu không nằm trên màn
-/// hình, và đọc thông tin này không cần quyền ghi màn hình.
+/// Trên macOS 26 mọi mục thanh menu do Control Center vẽ, mỗi màn hình một cửa sổ. Mục bị
+/// ẩn vì thiếu chỗ vẫn nằm trong danh sách, chỉ bị đánh dấu không hiện, nên đọc được mà
+/// không cần quyền ghi màn hình. Chỉ màn có tai thỏ mới biết bề rộng dành cho các mục, là
+/// phần bên phải tai thỏ. Màn không tai thỏ thì phần đó tuỳ độ dài menu của app đang mở.
 struct MenuBarSpace {
-    struct Bar {
-        var hiddenCount = 0
-        var usedWidth: CGFloat = 0
-        /// Chỉ biết được trên màn có tai thỏ: phần thanh menu bên phải tai thỏ.
-        var available: CGFloat?
+    struct Window {
+        let number: Int
+        let width: CGFloat
+        let visible: Bool
+    }
 
-        /// Thanh menu đang bị ẩn, ví dụ khi app chạy toàn màn hình, thì mọi cửa sổ đều
-        /// ngoài màn hình. Trường hợp đó không phải thiếu chỗ.
+    struct Bar {
+        let available: CGFloat
+        var windows: [Window] = []
+        /// Có mục đang trượt vào hoặc ra, số liệu chưa ổn định.
+        var isAnimating = false
+
+        var usedWidth: CGFloat { windows.filter(\.visible).reduce(0) { $0 + $1.width } }
+        /// Thanh menu đang bị ẩn, ví dụ khi app chạy toàn màn hình, thì không cửa sổ nào hiện.
         var isShowing: Bool { usedWidth > 0 }
     }
 
     let bars: [Bar]
 
-    var hasOverflow: Bool { bars.contains { $0.isShowing && $0.hiddenCount > 0 } }
-
-    /// Màn nào không biết bề rộng dùng được thì coi như đủ chỗ.
-    func fits(extraWidth: CGFloat) -> Bool {
-        bars.allSatisfy { bar in
-            guard bar.isShowing, let available = bar.available else { return true }
-            return available - bar.usedWidth >= extraWidth
-        }
-    }
-
     static func read() -> MenuBarSpace {
         let screens = NSScreen.screens
         guard let primaryTop = screens.first?.frame.maxY else { return MenuBarSpace(bars: []) }
-        var bars = screens.map { Bar(available: $0.auxiliaryTopRightArea?.width) }
+        let notched = screens.compactMap { screen in
+            screen.auxiliaryTopRightArea.map { (frame: screen.frame, available: $0.width) }
+        }
+        guard !notched.isEmpty else { return MenuBarSpace(bars: []) }
+        var bars = notched.map { Bar(available: $0.available) }
 
         let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
         let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
-
         for info in windows {
             guard info[kCGWindowLayer as String] as? Int == statusLevel,
+                  let number = info[kCGWindowNumber as String] as? Int,
                   let b = info[kCGWindowBounds as String] as? [String: CGFloat],
                   let x = b["X"], let y = b["Y"], let w = b["Width"], let h = b["Height"],
                   h < 60
@@ -47,21 +47,19 @@ struct MenuBarSpace {
 
             // Toạ độ CG tính từ góc trên trái màn hình chính, trục y hướng xuống.
             let midX = x + w / 2
-            let sameTop = screens.indices.filter { abs(primaryTop - screens[$0].frame.maxY - y) < 1 }
-            guard let i = sameTop.min(by: {
-                distance(midX, screens[$0].frame) < distance(midX, screens[$1].frame)
+            guard let i = notched.firstIndex(where: {
+                let top = primaryTop - $0.frame.maxY
+                return midX >= $0.frame.minX && midX < $0.frame.maxX && y >= top && y < top + h
             }) else { continue }
 
-            if info[kCGWindowIsOnscreen as String] as? Bool == true {
-                bars[i].usedWidth += w
+            let visible = info[kCGWindowIsOnscreen as String] as? Bool == true
+            if y - (primaryTop - notched[i].frame.maxY) >= 1 {
+                // Cửa sổ đang ẩn thì hiệu ứng của nó không chiếm chỗ.
+                if visible { bars[i].isAnimating = true }
             } else {
-                bars[i].hiddenCount += 1
+                bars[i].windows.append(Window(number: number, width: w, visible: visible))
             }
         }
         return MenuBarSpace(bars: bars)
-    }
-
-    private static func distance(_ x: CGFloat, _ frame: NSRect) -> CGFloat {
-        x < frame.minX ? frame.minX - x : max(0, x - frame.maxX)
     }
 }

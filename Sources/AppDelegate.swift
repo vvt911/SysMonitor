@@ -7,9 +7,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let memorySampler = MemorySampler()
     private let diskSampler = DiskSampler()
 
-    /// Thứ tự từ trái sang phải trên thanh menu.
+    /// Thứ tự hiển thị từ trái sang phải.
     private var controllers: [MetricController] = []
-    /// Thanh menu thiếu chỗ thì bỏ từ cuối danh sách này lên, RAM giữ tới cùng.
+    /// Ba ô trên thanh menu, từ trái sang phải.
+    private var slots: [StatusSlot] = []
+    /// Thanh menu thiếu chỗ thì bớt từ cuối danh sách này lên, RAM giữ tới cùng.
     private let priority: [MetricKind] = [.memory, .cpu, .disk]
 
     private var timer: Timer?
@@ -17,10 +19,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var lastStats = Stats()
 
     private var shownCount = 3
-    private var lastLayoutChange: CFAbsoluteTime = 0
-    private var lastGrow: CFAbsoluteTime = -.infinity
-    private var nextGrowAllowed: CFAbsoluteTime = 0
-    private var growBackoff: CFTimeInterval = 10
+    private var pendingGrowTarget: Int?
+    private var watchUntil: CFAbsoluteTime = 0
+    private var lastSpaceRead: CFAbsoluteTime = 0
+    private var ghostCandidates: [Int: CFAbsoluteTime] = [:]
+    private var ghosts: Set<Int> = []
+    private let growMargin: CGFloat = 10
+    /// Lề Control Center giữ lại cho một ô đã thu độ rộng về 0.
+    private let collapsedWidth: CGFloat = 16
+    /// Control Center xếp các mục thưa hơn phép cộng độ rộng vài point.
+    private let packingSlack: CGFloat = 4
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -35,20 +43,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         controllers = [CPUController(), MemoryController(), DiskController()]
         controllers.forEach { $0.build() }
-        layoutItems(rebuild: true)
+        // NSStatusBar chèn mục mới vào bên trái, nên ô tạo trước nằm bên phải.
+        slots = (0 ..< controllers.count).map { _ in StatusSlot() }.reversed()
+        apply(controllers.count)
 
         _ = cpuSampler.sample()
         _ = diskSampler.sample()
 
         restartTimer()
-        let space = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.checkMenuBarSpace() }
-        RunLoop.main.add(space, forMode: .common)
-        spaceTimer = space
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(screensChanged),
-            name: NSApplication.didChangeScreenParametersNotification, object: nil)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.tick() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.tick()
+            self?.startSpaceWatch()
+        }
         applyDebugArguments()
     }
 
@@ -61,62 +67,131 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !NSEvent.modifierFlags.contains(.command) else { return nil }
         let cursor = NSEvent.mouseLocation
         return controllers.first {
-            $0 !== skip && ($0.statusItem?.button?.window?.frame.contains(cursor) ?? false)
+            $0 !== skip && ($0.slot?.button?.window?.frame.contains(cursor) ?? false)
         }
     }
 
     func menuOpened() {
-        for c in controllers where !c.isOpen { c.statusItem?.button?.highlight(false) }
+        for slot in slots where slot.metric?.isOpen != true { slot.button?.highlight(false) }
     }
 
     func menuClosed(_ closed: MetricController) {
-        itemUnderCursor(excluding: closed)?.statusItem?.button?.performClick(nil)
+        itemUnderCursor(excluding: closed)?.slot?.button?.performClick(nil)
     }
 
     // MARK: - Nhường chỗ khi thanh menu đầy
 
-    /// Control Center tự chọn mục phải ẩn khi thiếu chỗ và chọn không nhất quán, lúc bỏ
-    /// RAM, lúc giữ RAM bỏ hai mục kia. Nên app tự bỏ bớt mục theo thứ tự ưu tiên để
-    /// không mục nào của mình bị hệ thống ẩn.
-    private func checkMenuBarSpace() {
-        let now = CFAbsoluteTimeGetCurrent()
-        guard !controllers.contains(where: { $0.isOpen }),
-              now - lastLayoutChange > 1.5 else { return }
-        let space = MenuBarSpace.read()
+    /// Control Center tự chọn mục phải ẩn khi thiếu chỗ và chọn không nhất quán, lúc ẩn
+    /// RAM, lúc giữ RAM ẩn hai mục kia. Nên app tự tính số chỉ số vừa chỗ theo thứ tự ưu
+    /// tiên rồi đổi một lần, không để ô nào của mình bị hệ thống ẩn.
+    private func startSpaceWatch() {
+        let t = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in self?.spaceTimerFired() }
+        RunLoop.main.add(t, forMode: .common)
+        spaceTimer = t
 
-        if space.hasOverflow {
-            guard shownCount > 1 else { return }
-            // Vừa hiện thêm mà tràn ngay thì lần sau đợi lâu gấp đôi mới thử lại.
-            growBackoff = now - lastGrow < 8 ? min(growBackoff * 2, 600) : 10
-            nextGrowAllowed = now + growBackoff
-            shownCount -= 1
-            layoutItems(rebuild: false)
-            return
+        // Thanh menu đổi thì Control Center dời hoặc ẩn các ô của app, và cửa sổ phía app
+        // được báo gần như tức thì. App mở hay thoát cũng hay thêm bớt biểu tượng.
+        let center = NotificationCenter.default
+        for slot in slots {
+            guard let window = slot.button?.window else { continue }
+            for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification,
+                         NSWindow.didChangeOcclusionStateNotification] {
+                center.addObserver(self, selector: #selector(menuBarMayHaveChanged), name: name, object: window)
+            }
+        }
+        center.addObserver(self, selector: #selector(menuBarMayHaveChanged),
+                           name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            workspace.addObserver(self, selector: #selector(menuBarMayHaveChanged), name: name, object: nil)
+        }
+        menuBarMayHaveChanged()
+    }
+
+    /// Có dấu hiệu thanh menu vừa đổi thì đọc dày trong chốc lát, bình thường mỗi giây một lần.
+    @objc private func menuBarMayHaveChanged() {
+        watchUntil = CFAbsoluteTimeGetCurrent() + 1.5
+    }
+
+    private func spaceTimerFired() {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now < watchUntil || now - lastSpaceRead >= 1,
+              !controllers.contains(where: { $0.isOpen }) else { return }
+        lastSpaceRead = now
+        evaluateSpace(at: now)
+    }
+
+    private func evaluateSpace(at now: CFAbsoluteTime) {
+        let bars = MenuBarSpace.read().bars.filter(\.isShowing)
+        let hiddenNow = Set(bars.flatMap { $0.windows.filter { !$0.visible }.map(\.number) })
+        ghosts.formIntersection(hiddenNow)
+        ghostCandidates = ghostCandidates.filter { hiddenNow.contains($0.key) }
+
+        guard !bars.isEmpty else { pendingGrowTarget = nil; return }
+        if bars.contains(where: \.isAnimating) { menuBarMayHaveChanged(); return }
+
+        let target = bars.map { fittingCount(on: $0, at: now) }.min() ?? shownCount
+        if target < shownCount {
+            // Thiếu chỗ thì bớt ngay, chậm lúc nào là chỉ số ưu tiên cao bị ẩn lúc đó.
+            apply(target)
+        } else if target > shownCount {
+            // Thêm thì đợi hai lần đọc liền nhau cùng kết quả, tránh nhảy qua nhảy lại.
+            if pendingGrowTarget == target {
+                apply(target)
+            } else {
+                pendingGrowTarget = target
+                menuBarMayHaveChanged()
+            }
+        } else {
+            pendingGrowTarget = nil
+        }
+    }
+
+    /// Số chỉ số nhiều nhất theo thứ tự ưu tiên mà thanh menu này chứa được.
+    private func fittingCount(on bar: MenuBarSpace.Bar, at now: CFAbsoluteTime) -> Int {
+        let ourWidths = slots.map(\.width)
+        let free = bar.available - bar.usedWidth
+        var hiddenForLackOfSpace: CGFloat = 0
+        for window in bar.windows where !window.visible && !ghosts.contains(window.number) {
+            // Ô của app bị ẩn thì luôn tính, kể cả khi về số học là vừa chỗ, vì Control
+            // Center có lúc vẫn giữ ẩn. Bỏ sót chỗ này làm chỉ số bật tắt liên tục.
+            let isOurs = ourWidths.contains { abs($0 - window.width) < 0.5 }
+            if isOurs || window.width + packingSlack > free {
+                hiddenForLackOfSpace += window.width
+                continue
+            }
+            // Mục của app khác vừa chỗ mà vẫn bị ẩn quá 1 giây là cửa sổ ma, sót lại khi
+            // app đó thoát, từ đó bỏ qua.
+            let since = ghostCandidates[window.number] ?? now
+            ghostCandidates[window.number] = since
+            if now - since >= 1 { ghosts.insert(window.number) }
         }
 
-        guard shownCount < priority.count, now >= nextGrowAllowed,
-              let next = controllers.first(where: { $0.kind == priority[shownCount] })
-        else { return }
-        let needed = (next.lastWidth > 0 ? next.lastWidth : 80) + 10
-        guard space.fits(extraWidth: needed) else { return }
-        shownCount += 1
-        lastGrow = now
-        layoutItems(rebuild: true)
+        let others = bar.usedWidth + hiddenForLackOfSpace - ourWidths.reduce(0, +)
+        var count = priority.count
+        while count > 1 {
+            let shown = priority.prefix(count)
+            let needed = controllers.reduce(others) { sum, c in
+                sum + (shown.contains(c.kind) ? c.expandedWidth : collapsedWidth)
+            }
+            if needed + (count > shownCount ? growMargin : 0) <= bar.available { break }
+            count -= 1
+        }
+        return count
     }
 
-    /// Bật lại một mục đã gỡ thì Control Center chèn nó vào chỗ khác, làm lệch thứ tự
-    /// CPU, RAM, ổ đĩa. Nên khi thêm mục phải gỡ hết rồi tạo lại từ phải sang trái.
-    private func layoutItems(rebuild: Bool) {
-        let shown = Set(priority.prefix(shownCount))
-        for c in controllers where rebuild || !shown.contains(c.kind) { c.detach() }
-        for c in controllers.reversed() where shown.contains(c.kind) { c.attach() }
-        lastLayoutChange = CFAbsoluteTimeGetCurrent()
-    }
-
-    @objc private func screensChanged() {
-        growBackoff = 10
-        nextGrowAllowed = 0
-        lastLayoutChange = CFAbsoluteTimeGetCurrent()
+    /// Các chỉ số được hiện dồn vào những ô bên phải, giữ thứ tự CPU, RAM, ổ đĩa.
+    private func apply(_ target: Int) {
+        pendingGrowTarget = nil
+        shownCount = target
+        let shownKinds = priority.prefix(target)
+        let visible = controllers.filter { shownKinds.contains($0.kind) }
+        let firstShown = slots.count - visible.count
+        for (index, slot) in slots.enumerated() {
+            if index < firstShown { slot.collapse() } else { slot.show(visible[index - firstShown]) }
+        }
+        for c in controllers { c.slot = slots.first { $0.metric === c } }
+        menuBarMayHaveChanged()
     }
 
     // MARK: - Vòng lấy mẫu
@@ -166,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let kind = MetricKind(rawValue: name),
            let target = controllers.first(where: { $0.kind == kind }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                target.statusItem?.button?.performClick(nil)
+                target.slot?.button?.performClick(nil)
             }
         }
     }
