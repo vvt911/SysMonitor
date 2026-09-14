@@ -42,6 +42,11 @@ giây) và bật tắt khởi động cùng máy.
 Đang mở một bảng mà bấm sang mục khác thì chuyển thẳng sang bảng đó, không phải
 bấm hai lần.
 
+Thanh menu thiếu chỗ thì app tự bỏ bớt mục theo thứ tự ưu tiên: bỏ ổ đĩa trước,
+rồi đến CPU, RAM giữ tới cùng. Có chỗ trở lại thì các mục hiện lại, vẫn theo thứ
+tự CPU, RAM, ổ đĩa. Mục bị bỏ sẽ mất trên mọi màn hình, kể cả màn còn dư chỗ, vì
+macOS không cho một mục thanh menu hiện riêng từng màn hình.
+
 ## Cấu trúc source
 
 | Tệp | Nội dung |
@@ -49,7 +54,8 @@ bấm hai lần.
 | `Sources/Metrics.swift` | Đọc số liệu hệ thống qua Mach, sysctl, IOKit và `ps` |
 | `Sources/MenuViews.swift` | Các thành phần giao diện tự vẽ trong menu |
 | `Sources/StatusItems.swift` | Ba mục trên thanh menu và nội dung từng bảng |
-| `Sources/AppDelegate.swift` | Vòng lấy mẫu theo nhịp và khởi tạo app |
+| `Sources/AppDelegate.swift` | Vòng lấy mẫu, chuyển menu và nhường chỗ khi thanh menu đầy |
+| `Sources/MenuBarSpace.swift` | Đọc chỗ trống thanh menu của từng màn hình |
 | `Sources/Formatters.swift` | Định dạng số liệu hiển thị |
 
 Số liệu lấy trực tiếp từ nhân hệ điều hành, không gọi lệnh ngoài trừ `ps` dùng
@@ -65,17 +71,29 @@ kết quả `ps` vào một vùng nhớ có khoá, còn giao diện đọc lại
 Khi một menu đang mở, cú bấm sang mục khác bị vòng theo dõi của menu nuốt mất
 nên mục kia không hề nhận được, mặc định phải bấm hai lần. App bắt lúc menu vừa
 đóng, thấy con trỏ đang nằm trên mục nào thì mở menu của mục đó. Vị trí đọc từ
-khung cửa sổ thật lúc đó chứ không phải toạ độ cố định, nên kéo đổi chỗ tuỳ ý
-vẫn đúng.
+khung cửa sổ thật lúc đó chứ không phải toạ độ cố định.
 
 macOS mất khoảng 270 ms mới đóng xong menu cũ sau cú bấm, giữ chuột lâu hay nhả
 ngay đều vậy, và tự gọi `cancelTrackingWithoutAnimation` cũng không nhanh hơn.
 Đó là trần của cách làm bằng NSMenu, muốn nhanh hơn thì phải thay menu bằng cửa
 sổ tự vẽ.
 
-Thứ tự ba mục trên thanh menu là CPU, bộ nhớ, ổ đĩa. Do `NSStatusBar` chèn mục
-mới vào bên trái nên trong `AppDelegate` chúng được tạo theo thứ tự ngược lại.
-Có thể giữ phím Command rồi kéo để đổi chỗ, macOS sẽ nhớ vị trí.
+Thứ tự ba mục cố định là CPU, bộ nhớ, ổ đĩa. `NSStatusBar` chèn mục mới vào bên
+trái nên các mục được tạo từ phải sang trái. Giữ Command rồi kéo vẫn đổi chỗ được
+nhưng không được nhớ, vì mỗi lần thêm lại mục app tạo lại cả ba theo thứ tự này.
+
+Khi thanh menu thiếu chỗ, Control Center tự chọn mục phải ẩn và chọn không nhất
+quán. Thử nghiệm cho thấy thiếu chỗ cho một mục thì nó ẩn RAM, thiếu chỗ cho hai
+mục thì nó lại giữ RAM mà ẩn hai mục kia, và đổi tên lưu vị trí không ảnh hưởng gì.
+Vì vậy app tự nhường chỗ. Cứ 2 giây app đọc danh sách cửa sổ thanh menu, thấy có
+mục bị ẩn thì gỡ mục ưu tiên thấp nhất đang hiện. Trên màn có tai thỏ app tính được
+phần trống bên phải tai thỏ nên chỉ hiện lại mục khi đủ chỗ. Trên màn không có tai
+thỏ thì thử hiện lại, tràn ngay thì lần sau đợi lâu gấp đôi. Đọc danh sách cửa sổ
+tốn khoảng 6 ms và không cần quyền ghi màn hình, vì mục bị ẩn vẫn nằm trong danh
+sách, chỉ bị đánh dấu không hiện.
+
+Không bật tắt mục bằng `isVisible`. Bật lại theo cách đó thì Control Center chèn
+mục vào chỗ khác và thứ tự bị lệch, nên muốn thêm mục là gỡ hết rồi tạo lại.
 
 Kiểm tra giao diện nhanh mà không cần bấm chuột:
 

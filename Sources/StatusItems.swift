@@ -96,21 +96,32 @@ enum LaunchAtLogin {
 
 class MetricController: NSObject, NSMenuDelegate {
     let kind: MetricKind
-    let statusItem: NSStatusItem
     let menu = NSMenu()
     let header: HeaderView
+    private(set) var statusItem: NSStatusItem?
     private(set) var isOpen = false
+    /// Độ rộng thật trên thanh menu lần gần nhất, để ước lượng chỗ cần khi hiện lại.
+    private(set) var lastWidth: CGFloat = 0
 
+    private var lastTitle = " --"
     private var intervalItems: [NSMenuItem] = []
     private var loginItem: NSMenuItem?
 
     init(kind: MetricKind) {
         self.kind = kind
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.header = HeaderView(symbol: kind.symbol, title: kind.title)
         super.init()
+        menu.delegate = self
+        menu.autoenablesItems = false
+    }
 
-        if let b = statusItem.button {
+    // MARK: Mục trên thanh menu
+
+    /// NSStatusBar chèn mục mới vào sát bên trái các mục đang có.
+    final func attach() {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let b = item.button {
             let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
             let img = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: kind.title)?
                 .withSymbolConfiguration(cfg)
@@ -119,13 +130,17 @@ class MetricController: NSObject, NSMenuDelegate {
             b.imagePosition = .imageLeading
             b.imageHugsTitle = true
             b.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-            b.title = " --"
+            b.title = lastTitle
             b.toolTip = kind.title
         }
-        statusItem.autosaveName = "SysMonitor.\(kind.rawValue)"
-        menu.delegate = self
-        menu.autoenablesItems = false
-        statusItem.menu = menu
+        item.menu = menu
+        statusItem = item
+    }
+
+    final func detach() {
+        guard let item = statusItem else { return }
+        NSStatusBar.system.removeStatusItem(item)
+        statusItem = nil
     }
 
     // MARK: Dựng menu
@@ -212,7 +227,10 @@ class MetricController: NSObject, NSMenuDelegate {
     // MARK: Cập nhật
 
     final func updateStatusItem(_ s: Stats) {
-        statusItem.button?.title = " " + Fmt.pct(percent(s))
+        lastTitle = " " + Fmt.pct(percent(s))
+        guard let button = statusItem?.button else { return }
+        button.title = lastTitle
+        if let width = button.window?.frame.width, width > 0 { lastWidth = width }
     }
 
     final func refreshProcesses() {
@@ -240,7 +258,7 @@ class MetricController: NSObject, NSMenuDelegate {
     func menuDidClose(_ menu: NSMenu) {
         isOpen = false
         // Đóng bằng cancelTracking thì macOS không tự tắt phần tô đậm của nút.
-        statusItem.button?.highlight(false)
+        statusItem?.button?.highlight(false)
         AppDelegate.shared?.menuClosed(self)
     }
 }
