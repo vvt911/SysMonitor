@@ -179,7 +179,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func evaluateSpace(at now: CFAbsoluteTime) {
-        let bars = MenuBarSpace.read().bars.filter(\.isShowing)
+        let all = MenuBarSpace.read().bars
+        guard all.contains(where: { !$0.windows.isEmpty }) else {
+            if shownCount < enabledMetrics.count { apply(enabledMetrics.count) }
+            return
+        }
+        let bars = all.filter(\.isShowing)
         let hiddenNow = Set(bars.flatMap { $0.windows.filter { !$0.visible }.map(\.number) })
         ghosts.formIntersection(hiddenNow)
         ghostCandidates = ghostCandidates.filter { hiddenNow.contains($0.key) }
